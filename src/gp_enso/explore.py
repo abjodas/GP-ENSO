@@ -2,27 +2,14 @@ from __future__ import annotations
 
 import numpy as np
 import matplotlib.pyplot as plt
-from statsmodels.graphics.tsaplots import plot_acf
+from gp_enso.plot import plot_periodogram
 from scipy.fft import fft, fftfreq
 
-def plot_autocorrelation(
-    y: np.ndarray,
-    lags: int = 100,
-    title: str = "Autocorrelation Function",
-):
-    y = np.asarray(y, dtype=float)
-    plt.figure(figsize=(12, 5))
-    plot_acf(y, lags=lags)
-    plt.xlabel("Lag (months)")
-    plt.title(title)
-    plt.tight_layout()
-    plt.show()
-
-def plot_periodogram_years(
+def get_dominant_period(
     y: np.ndarray,
     sample_spacing_years: float = 1.0 / 12.0,
-    xlim_years: float = 10.0,
-):
+    get_plot: bool = True,
+) -> float:
     y = np.asarray(y, dtype=float)
     n = len(y)
 
@@ -36,14 +23,9 @@ def plot_periodogram_years(
     fft_power = fft_power[mask]
 
     periods = 1.0 / freqs
-    plt.figure(figsize=(10, 5))
-    plt.plot(periods, fft_power)
-    plt.xlabel("Period (years)")
-    plt.ylabel("Power")
-    plt.xlim(0, xlim_years)
-    plt.title("Periodogram")
-    plt.tight_layout()
-    plt.show()
-
     peak_idx = int(np.argmax(fft_power))
+
+    if get_plot:
+        plot_periodogram(periods, fft_power)
+
     return float(periods[peak_idx])

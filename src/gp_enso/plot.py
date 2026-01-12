@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from pathlib import Path
+from bokeh.io import export_png
 from bokeh.plotting import figure
 from bokeh.models import Span
+from statsmodels.graphics.tsaplots import plot_acf
+
+from . import config
 
 def plot_gp_forecast(
     dates: pd.DatetimeIndex,
@@ -14,7 +20,7 @@ def plot_gp_forecast(
     df_obs: pd.DataFrame,
     obs_col: str,
     split_date: str = "2025-08-01",
-    title: str = "GP forecast"
+    title: str = "GP forecast",
 ):
     p = figure(x_axis_type="datetime", width=900, height=360, title=title)
     p.xaxis.axis_label = "Date"
@@ -52,6 +58,8 @@ def plot_gp_forecast(
     predline = Span(location=pd.to_datetime(split_date), dimension="height", line_dash="dashed", line_width=2)
     p.add_layout(predline)
     p.legend.location = "bottom_right"
+    # filename = str(config.PLOT_DIR) + "GP_forecast.png"
+    # export_png(p, filename=filename)
     return p
 
 def plot_timeseries(
@@ -71,3 +79,33 @@ def plot_timeseries(
         p.add_layout(Span(location=0, dimension="width", line_dash="dashed", line_width=2))
     p.line(x, y, line_width=2, alpha=0.6)
     return p
+
+def plot_periodogram(
+    periods,
+    fft_power,
+):
+    xlim_years = float(10.0)
+    save_dir = config.PLOT_DIR / "Periodogram.png"
+
+    plt.figure(figsize=(10, 5))
+    plt.plot(periods, fft_power)
+    plt.xlabel("Period (years)")
+    plt.ylabel("Power")
+    plt.xlim(0, xlim_years)
+    plt.title("Periodogram")
+    plt.tight_layout()
+    plt.savefig(save_dir)
+
+def plot_autocorrelation(
+    y: np.ndarray,
+    lags: int = 100,
+    title: str = "Autocorrelation Function",
+):
+    y = np.asarray(y, dtype=float)
+    plt.figure(figsize=(12, 5))
+    plot_acf(y, lags=lags)
+    plt.xlabel("Lag (months)")
+    plt.title(title)
+    plt.tight_layout()
+    plt.show()
+

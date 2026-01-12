@@ -5,6 +5,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SRC_DIR = REPO_ROOT / "src"
+PLOT_DIR = REPO_ROOT / "plots"
 sys.path.insert(0, str(SRC_DIR))
 
 from bokeh.layouts import column
@@ -12,13 +13,9 @@ from bokeh.io import output_file, save
 from bokeh.plotting import figure, show
 from bokeh.models import Span
 
-from gp_enso.io import prepare_enso_dataframe, load_sunspots, prepare_sunspots, download_noaa_tides, subsample, normalise_column
-from gp_enso.time import dates_to_index
-from gp_enso.explore import plot_autocorrelation, plot_periodogram_years
-from gp_enso.gp_model import build_quasiperiodic_gp_model, fit_map
-from gp_enso.forecast import make_monthly_date_grid, predict_gp, draw_paths
-from gp_enso.plot import plot_gp_forecast, plot_timeseries
+from gp_enso import *
 
+set_plot_dir(PLOT_DIR)
 
 def plot_timeseries_bokeh(df):
     p = figure(
@@ -44,16 +41,15 @@ def main():
 
     # plot_timeseries_bokeh(df)
 
-    dominant_period = plot_periodogram_years(df["NINA34"].to_numpy())
+    dominant_period = get_dominant_period(df["NINA34"].to_numpy(), get_plot = True)
     print(f"Dominant period: {dominant_period:.2f} years")
-
-    plot_autocorrelation(df["NINA34"].to_numpy(), lags=100)
 
     t = (df["t"].values[:, None])   # (M,1)
     y = df["y_n"].values            # (M,)
 
     model, gp = build_quasiperiodic_gp_model(t, y)
     mp = fit_map(model)
+    print(sorted([name + ":" + str(mp[name]) for name in mp.keys() if not name.endswith("_")]))
 
     dates = make_monthly_date_grid(start="1870-01-01", end="2040-08-01", freq="MS") # Month Start
     pred = predict_gp(model, gp, mp, dates)
@@ -89,7 +85,7 @@ def main():
 
     p_tides = plot_timeseries(tides_sub["time"], tides_sub["water_level"], title="Water Level over time", y_label="Water Level")
 
-    output_file("run_notebook_steps.html")
+    output_file(str(PLOT_DIR) + "run_notebook_steps.html")
     save(column(p_enso, p_sun, p_tides))
 
 
