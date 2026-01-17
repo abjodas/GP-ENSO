@@ -8,86 +8,46 @@ SRC_DIR = REPO_ROOT / "src"
 PLOT_DIR = REPO_ROOT / "plots"
 sys.path.insert(0, str(SRC_DIR))
 
-from bokeh.layouts import column
-from bokeh.io import output_file, save
-from bokeh.plotting import figure, show
-from bokeh.models import Span
-
 from gp_enso import *
 
 set_plot_dir(PLOT_DIR)
 
-def plot_timeseries_bokeh(df):
-    p = figure(
-        x_axis_type="datetime",
-        title="NINO 3.4 Index over time (smoothed)",
-        width=800,
-        height=450,
-    )
-    p.yaxis.axis_label = "NINA3.4"
-    p.xaxis.axis_label = "Date"
-
-    zeroline = Span(location=0, dimension="width", line_color="red", line_dash="dashed", line_width=2)
-    p.add_layout(zeroline)
-
-    p.line(df.index, df["NINA34_smoothed"], line_width=2, line_color="black", alpha=0.6)
-    show(p)
 
 
 def main():
 
-    prepared = prepare_enso_dataframe(REPO_ROOT / "data" / "nino34.long.anom.csv")
-    df = prepared.df
+    df_new = build_df(indices=("nino3", "soi", "nino4", "nino34", "nino12"))
+    data = prepare_train_test(df_new, target="nino34", features=("t_years", "soi"))
 
-    # plot_timeseries_bokeh(df)
-
-    dominant_period = get_dominant_period(df["NINA34"].to_numpy(), get_plot = True)
-    print(f"Dominant period: {dominant_period:.2f} years")
-
-    t = (df["t"].values[:, None])   # (M,1)
-    y = df["y_n"].values            # (M,)
-
-    model, gp = build_quasiperiodic_gp_model(t, y)
-    mp = fit_map(model)
-    print(sorted([name + ":" + str(mp[name]) for name in mp.keys() if not name.endswith("_")]))
-
-    dates = make_monthly_date_grid(start="1870-01-01", end="2040-08-01", freq="MS") # Month Start
-    pred = predict_gp(model, gp, mp, dates)
-
-    # rescale back to original units
-    mu_sc = pred.mu * prepared.value_std + prepared.first_value
-    cov_sc = pred.cov * (prepared.value_std ** 2)
-
-    samples = draw_paths(mu_sc, cov_sc, draws=5, seed=1)
-
-    p_enso = plot_gp_forecast(
-        dates=pred.dates,
-        mu=mu_sc,
-        cov=cov_sc,
-        samples=samples,
-        df_obs=df,
-        obs_col=prepared.smooth_col,  # or prepared.value_col
-        split_date="2025-08-01",
-        title="ENSO GP forecast",
+    model, gp = build_quasiperiodic_gp_model(
+        data.X_train_scaled,      # shape (700, 2): [t_years, soi]
+        data.y_train_scaled       # shape (700,)
     )
+    mp = fit_map(model)
 
-    sun = prepare_sunspots(load_sunspots())
-    p_sun = plot_timeseries(sun.index, sun["Sunspot_Number"], title="Sunspot Index over time", y_label="Sunspot Number")
+    pred = predict_gp_X(model, gp, mp, data.X_test_scaled)
 
-    tides = download_noaa_tides("8443970", "20240101", "20240131", product="water_level")
-    tides_sub = subsample(tides, step=10)
+    samples_scaled = draw_paths(pred.mu, pred.cov, draws=10, seed=1)
 
-    # match notebook time scaling: 0.01 days since 2024-01-01
-    t = dates_to_index(tides_sub["time"], reference_time="2024-01-01", unit="D", scale=0.01)
-    tides_sub = tides_sub.assign(t=t)
+    samples_rescaled = data.scaler_y.inverse_transform(samples_scaled.T).T  # (10, M)
+    mean_pred = samples_rescaled.mean(axis=0)
+    std_pred = samples_rescaled.std(axis=0)
 
-    tides_sub, first_water, y_std = normalise_column(tides_sub, "water_level")
+    split_at = len(data.df) - len(data.X_test)  # == 600 if you used default prepare_train_test
+    t_train = data.t.iloc[:split_at].to_numpy()
+    y_train = data.df["nino34"].iloc[:split_at].to_numpy()
 
-    p_tides = plot_timeseries(tides_sub["time"], tides_sub["water_level"], title="Water Level over time", y_label="Water Level")
+    t_test = data.t.iloc[split_at:].to_numpy()
+    y_test = data.df["nino34"].iloc[split_at:].to_numpy()
 
-    output_file(str(PLOT_DIR) + "run_notebook_steps.html")
-    save(column(p_enso, p_sun, p_tides))
-
+    plot_multi_input_gp(
+        t_train=t_train,
+        y_train=y_train,
+        t_test=t_test,
+        y_test=y_test,
+        mean_pred=mean_pred,
+        std_pred=std_pred,
+    )
 
 
 

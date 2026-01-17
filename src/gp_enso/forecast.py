@@ -5,39 +5,12 @@ import numpy as np
 import pandas as pd
 import pymc as pm
 
-from .time import dates_to_year_index
-
 @dataclass(frozen=True)
-class GPPrediction:
-    dates: pd.DatetimeIndex
-    tnew: np.ndarray            # (M,1)
+class GPPredictionX:
+    """GP prediction for arbitrary design matrix X_new."""
+    X_new: np.ndarray           # (M,D)
     mu: np.ndarray              # (M,)
     cov: np.ndarray             # (M,M)
-
-def make_monthly_date_grid(
-    start: str | pd.Timestamp,
-    end: str | pd.Timestamp,
-    freq: str = "MS",
-) -> pd.DatetimeIndex:
-    return pd.date_range(start=pd.to_datetime(start), end=pd.to_datetime(end), freq=freq)
-
-def predict_gp(
-    model: pm.Model,
-    gp: pm.gp.Marginal,
-    mp: dict,
-    dates: pd.DatetimeIndex,
-) -> GPPrediction:
-
-    tnew = dates_to_year_index(dates)[:, None]
-    print("Sampling GP predictions ...")
-
-    with model:
-        mu, cov = gp.predict(tnew, point=mp)
-    
-    mu = np.asarray(mu, dtype=float).reshape(-1)
-    cov = np.asarray(cov, dtype=float)
-
-    return GPPrediction(dates=dates, tnew=tnew, mu=mu, cov=cov)
 
 def draw_paths(
     mu: np.ndarray,
@@ -51,3 +24,26 @@ def draw_paths(
     """
     rv = pm.MvNormal.dist(mu=mu, cov=cov)
     return pm.draw(rv, draws=draws, random_seed=seed)
+
+def predict_gp_X(
+    model: pm.Model,
+    gp: pm.gp.Marginal,
+    mp: dict,
+    X_new: np.ndarray,
+) -> GPPredictionX:
+    """
+    Predict GP mean/cov at an arbitrary design matrix.
+
+    Typical usage for the multi-input notebook:
+      pred = predict_gp_X(model, gp, mp, X_test_scaled)
+    """
+    X_new = np.asarray(X_new, dtype=float)
+    if X_new.ndim != 2:
+        raise ValueError(f"X_new must be 2D (M,D). Got shape {X_new.shape}.")
+
+    with model:
+        mu, cov = gp.predict(X_new, point=mp)
+
+    mu = np.asarray(mu, dtype=float).reshape(-1)
+    cov = np.asarray(cov, dtype=float)
+    return GPPredictionX(X_new=X_new, mu=mu, cov=cov)
